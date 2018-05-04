@@ -1,0 +1,357 @@
+---
+title: "Final Exam"
+# subtitle: "possible subtitle goes here"
+author:
+  - Wei Shi
+# date: "`r format(Sys.time(), '%d %B %Y')`"
+documentclass: article
+papersize: letter
+fontsize: 11pt
+# bibliography: template.bib
+# biblio-style: datalab
+
+output:
+  bookdown::pdf_document2
+  bookdown::html_document2
+---
+
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+## some utility functions, see the source code for details
+source("utils_template.R")
+
+## specify the packages needed
+pkgs <- c("KernSmooth")
+need.packages(pkgs)
+
+## external data can be read in by regular functions,
+## such as read.table or load
+
+## get output format in case something needs extra effort
+outFormat <- knitr::opts_knit$get("rmarkdown.pandoc.to")
+## "latex" or "html"
+
+## for latex and html output
+isHtml <- identical(outFormat, "html")
+isLatex <- identical(outFormat, "latex")
+latex <- ifelse(isLatex, '\\LaTeX\\', 'LaTeX')
+
+## specify global chunk options
+knitr::opts_chunk$set(fig.width = 7, fig.height = 6, dpi = 300,
+                      out.width = "90%", fig.align = "center", 
+                      warning = FALSE, message = FALSE)
+```
+
+
+# Problem 1
+
+## (a)
+
+The zero-inflated Poisson is a mixture of a Poisson and a Bernoulli distribution,
+\begin{align}
+Y=V(1-B),
+\end{align}
+where $V \sim \text{Poisson}(\lambda), B \sim \text{Bernoulli}(\xi)$, and $V$ and $B$ are independent.
+
+Thus,
+\begin{align}
+P(Y=0 \text{ from Bernoulli}) & = P(B=1) = \xi \\
+P(Y=0 \text{ from Poisson}) & =P(B=0,V=0) = (1-\xi)e^{-\lambda} \\
+P(Y=i) & = P(B=0,V=i) = (1-\xi)\frac{\lambda^i e^{-\lambda}}{i!}, i = 1,2,\ldots
+\end{align}
+
+Therefore, the complete-data likelihood can be written as
+\begin{align}
+l^c(\xi, \lambda) & = \log \left\{\xi^{z_b}[(1-\xi)e^{-\lambda}]^{z_p}
+\prod_{i=1}^{\infty}\left[(1-\xi)\frac{\lambda^i e^{-\lambda}}{i!}\right]^{n_i}\right\} \\
+& = z_b \log \xi + z_p [\log(1-\xi) - \lambda] + \sum_{i=1}^{\infty} n_i [\log(1-\xi) + i\log \lambda - \lambda - \log(i!)]
+\end{align}
+
+## (b)
+
+### E-step: Compute the conditional expectation of $l^c(\xi, \lambda)$
+
+Denote the observed data as $\boldsymbol{n} = (n_0, n_1, n_2, \ldots)$. We have that
+\begin{align}
+Q(\xi, \lambda|\xi_t, \lambda_t) 
+& = \sum_{z_b} \sum_{z_p} l^c(\xi, \lambda) p(z_b,z_p|\boldsymbol{n}, \xi_t, \lambda_t) \\
+& = \log \xi \sum_{z_b} \sum_{z_p} z_b p(z_b,z_p|\boldsymbol{n}, \xi_t, \lambda_t) + 
+    [\log(1-\xi) - \lambda] \sum_{z_b} \sum_{z_p} z_p p(z_b,z_p|\boldsymbol{n}, \xi_t, \lambda_t) +
+    \sum_{i=1}^{\infty} n_i [\log(1-\xi) + i\log \lambda - \lambda - \log(i!)] \\
+& = \log \xi \sum_{z_b} z_b p(z_b|\boldsymbol{n}, \xi_t, \lambda_t) + 
+    [\log(1-\xi) - \lambda] \sum_{z_p} z_p p(z_p|\boldsymbol{n}, \xi_t, \lambda_t) +
+    \sum_{i=1}^{\infty} n_i [\log(1-\xi) + i\log \lambda - \lambda - \log(i!)] \\
+& = b_{t+1} \log \xi + p_{t+1}[\log(1-\xi) - \lambda] +
+    \sum_{i=1}^{\infty} n_i [\log(1-\xi) + i\log \lambda - \lambda - \log(i!)], \\
+\end{align}
+
+where
+\begin{align}
+b_{t+1} & = \sum_{z_b} z_b p(z_b|\boldsymbol{n}, \xi_t, \lambda_t) = E(z_b|n_0, \xi_t, \lambda_t) = n_0  \frac{\xi_t}{\xi_t + (1-\xi_t)e^{-\lambda_t}} \text{ since } z_b|n_0, \xi_t, \lambda_t \sim \text{Binomial}\left(n_0, \frac{\xi_t}{\xi_t + (1-\xi_t)e^{-\lambda_t}}\right) \\
+p_{t+1} & = \sum_{z_p} z_p p(z_p|\boldsymbol{n}, \xi_t, \lambda_t) = E(z_p|n_0, \xi_t, \lambda_t) = n_0  \frac{(1-\xi_t)e^{-\lambda_t}}{\xi_t + (1-\xi_t)e^{-\lambda_t}} = n_0 - b_{t+1} \text{ since } z_p|n_0, \xi_t, \lambda_t \sim \text{Binomial}\left(n_0, \frac{(1-\xi_t)e^{-\lambda_t}}{\xi_t + (1-\xi_t)e^{-\lambda_t}}\right)
+\end{align}
+
+### M-step: Maximize $Q(\xi, \lambda|\xi_t, \lambda_t)$ to obtain $(\xi_{t+1}, \lambda_{t+1})$
+
+Take derivative of $Q(\xi, \lambda|\xi_t, \lambda_t)$ w.r.t. $\xi$ and $\lambda$ and set to zero, we have that
+\begin{align}
+\frac{\partial Q(\xi, \lambda|\xi_t, \lambda_t)}{\partial \xi} 
+& = \frac{b_{t+1}}{\xi} - \frac{p_{t+1} + \sum_{i=1}^{\infty} n_i}{1-\xi} = 0\\
+\frac{\partial Q(\xi, \lambda|\xi_t, \lambda_t)}{\partial \lambda} 
+& = \frac{\sum_{i=1}^{\infty} i \cdot n_i}{\lambda} - (p_{t+1} + \sum_{i=1}^{\infty} n_i)= 0\\
+\end{align}
+
+Solve the above two equations, we can get that
+\begin{align}
+\xi_{t+1} & = \frac{b_{t+1}}{b_{t+1} + p_{t+1} + \sum_{i=1}^{\infty} n_i} = \frac{b_{t+1}}{\sum_{i=0}^{\infty} n_i}\\
+\lambda_{t+1} & = \frac{\sum_{i=1}^{\infty} i \cdot n_i}{p_{t+1} + \sum_{i=1}^{\infty} n_i} = \frac{\sum_{i=0}^{\infty} i \cdot n_i}{\sum_{i=0}^{\infty} n_i - b_{t+1}}\\
+\end{align}
+
+## (c)
+
+```{r}
+MyEM <- function(data, xi0, lambda0, tol = 1e-06){
+  # Compute the MLE of xi and lambda by EM algorithm.
+  #
+  # Args:
+  #   data: data frame with variables i and ni.
+  #   xi0: initial value of xi.
+  #   lambda0: initial value of lambda.
+  #   tol: the desired accuracy. Default is 1e-06.
+  #
+  # Returns:
+  #   MLE of xi and lambda.
+  xi <- xi0
+  lambda <- lambda0
+  print(paste("Initial value: xi =", xi, ", lambda =", lambda))
+
+  sum.ni <- sum(data$ni)
+  sum.ini <- sum(data$i * data$ni)
+  diff <- 1
+  i <- 1
+  
+  print("Results of first 10 iterations:")
+  while(diff > tol){
+    b <- data$ni[1] * xi / (xi + (1 - xi) * exp(-lambda))
+    xi.new <- b / sum.ni
+    lambda.new <- sum.ini / (sum.ni - b)
+    if(i <= 10) print(paste("Iteration", i, ": xi =", xi.new, ", lambda =", lambda.new))
+    diff <- sqrt((xi.new - xi)^2 + (lambda.new - lambda)^2)
+    xi <- xi.new
+    lambda <- lambda.new
+    i <- i + 1
+  }
+  return(data.frame(xi,lambda))
+}
+```
+
+## (d)
+
+(ref:result1d) MLE of $\xi$ and  $\lambda$ by EM algorithm.
+```{r}
+dat <- data.frame(i  = 0:6, 
+                  ni = c(3062, 587, 284, 103, 33, 4, 2))
+
+set.seed(6218)
+xi0 <- 0.75
+lambda0 <- 0.40
+result1d <- MyEM(dat, xi0, lambda0)
+knitr::kable(result1d, booktabs = TRUE, digits = 8,
+             caption = '(ref:result1d)')
+```
+
+
+# Problem 2
+
+## (a)
+
+\begin{align}
+N(5) \sim \text{Poisson}(Z),
+\end{align}
+where
+\begin{align}
+Z = \int_0^5 \lambda(t) dt = \int_0^5 [\sqrt{t} + e^{-t}\sin(2\pi t)] dt \approx 7.60774
+\end{align}
+
+## (b)
+
+Since
+\begin{align}
+\lambda(t) = \sqrt{t} + e^{-t}\sin(2\pi t) \leq \sqrt{t} + e^{-t} \leq \sqrt{5} + e^{-5}, t \in [0,5],
+\end{align}
+with $\lambda_0 = \sqrt{5} + e^{-5}$, we can design the procedure to simulate from this Poisson process as follows:
+
+Step 1: Sample ${\tau_i}$ from a Poisson process with intensity $\lambda_0$ in [0, 5]
+
+Step 2: For each $i$, retain ${\tau_i}$ with probability $\lambda(\tau_i)/\lambda_0$
+
+Step 3: Return the retained ${\tau_i}$
+
+```{r}
+lambda <- function(t) sqrt(t) + exp(-t) * sin(2 * pi * t)
+
+MySimu <- function(lambda0){
+  t <- 5
+  N <- rpois(1, lambda0 * t)
+  S <- sort(runif(N) * t)
+  X <- numeric()
+  if(N != 0){
+    for(i in 1:N){
+      if(runif(1) < lambda(S[i]) / lambda0){
+        X <- c(X, S[i])
+      }
+    }
+  }
+  return(X)
+}
+```
+
+## (c)
+```{r}
+lambda0 <- sqrt(5) + exp(-5)
+nrep <- 10000
+sample <- unlist(replicate(nrep, MySimu(lambda0)))
+
+plot(density(sample, from = 0, to = max(sample)), 
+     main = "Kernel Density Estimation vs True Density")
+  curve(sapply(x, function(x) lambda(x) / 7.60774), from = 0, to = max(sample), 
+        col = "red", add = TRUE)
+  legend("topleft",c("Kernel density est","True density"), col = c("black", "red"), lty = 1)
+```
+
+From the above plot, we can see that two curves are quite close.
+
+# Problem 3
+
+## (a)
+
+\begin{align}
+R(x,y|x_0,y_0) = \frac{f(x,y)k(x_0,y_0|x,y)}{f(x_0,y_0)k(x,y|x_0,y_0)}
+= \frac{\frac{e^{-x}(1-y)^{\tau-1}}{x+\theta y}e^{-x_0}(1-y_0)^{\tau - 1}}{\frac{e^{-x_0}(1-y_0)^{\tau-1}}{x_0+\theta y_0}e^{-x}(1-y)^{\tau - 1}}
+= \frac{x_0 + \theta y_0}{x + \theta y}
+\end{align}
+
+## (b)
+
+```{r}
+MyMH <- function(tau, theta, n, nburn){
+  total.n <- n + nburn
+  x.sample <- y.sample <- vector(length = total.n)
+  x.sample[1] <- y.sample[1] <- 0.5 #initial value
+  for(i in 1:(total.n - 1)){
+    x <- rexp(1)
+    y <- rbeta(1, 1, tau)
+    u <- runif(1)
+    r <- (x.sample[i] + theta * y.sample[i]) / (x + theta * y)
+    if (u <= min(r, 1)){
+      x.sample[i + 1] <- x
+      y.sample[i + 1] <- y
+    } else{
+      x.sample[i + 1] <- x.sample[i]
+      y.sample[i + 1] <- y.sample[i]
+    }
+  }
+  return(data.frame(x = tail(x.sample, n), y = tail(y.sample, n)))
+}
+```
+
+## (c)
+
+```{r results='hide'}
+MySampleContour <- function(tau, theta, n, nburn){
+  sample <- MyMH(tau, theta, n, nburn)
+  sample <- sample[sample$x <= 1,]
+  est <- bkde2D(sample, bandwidth = c(5 / sqrt(n), 5 / sqrt(n)))
+  contour(est$x1, est$x2, est$fhat, main = paste("tau =", tau, ", theta =", theta))
+}
+
+vMySampleContour <- Vectorize(MySampleContour, c("tau", "theta"))
+
+n <- 30000
+nburn <- 5000
+tau <- c(0.2, 0.5, 1, 2)
+theta <- c(0.5, 1, 2)
+
+par(mfrow = c(3, 4), oma = c(0, 0, 2, 0))
+outer(tau, theta, vMySampleContour, n, nburn)
+title("Sample Contours", outer = TRUE)
+```
+
+
+# Problem 4
+
+## (a) 
+Here we have that $f$ is the density of $N((r-\sigma^2/2)T, \sigma^2T)$, and $g$ is the density of $N((\mu-\sigma^2/2)T, \sigma^2T)$. Then, the importance ratio can be calculated as
+\begin{align}
+w(x)=\frac{f(x)}{g(x)} & = 
+\frac{\frac{1}{\sqrt{2\pi\sigma^2T}}\exp\left\{-\frac{[x-(r-\sigma^2/2)T]^2}{2\sigma^2T}\right\}}
+     {\frac{1}{\sqrt{2\pi\sigma^2T}}\exp\left\{-\frac{[x-(\mu-\sigma^2/2)T]^2}{2\sigma^2T}\right\}} \\
+& = \exp\left\{\frac{[x-(\mu-\sigma^2/2)T]^2 - [x-(r-\sigma^2/2)T]^2}{2\sigma^2T}\right\} \\
+& = \exp\left\{\frac{(r-\mu)[2x-(\mu + r - \sigma^2)T]}{2\sigma^2}\right\}
+\end{align}
+
+```{r}
+MyIS <- function(n, mu, t, r, S0, K, sigma){
+  x <- rnorm(n, (mu - sigma^2 / 2) * t, sigma * sqrt(t))
+  w <- exp((r - mu) * (2 * x - (mu + r - sigma^2) * t) / (2 * sigma^2))
+  h <- exp(-r * t) * pmax(S0 * exp(x) - K, 0)
+  return(mean(h * w))
+}
+```
+
+## (b)
+
+(ref:result4b) Mean and standard error of the approximated value from crude Monte Carlo (MC) and importance sampling (IS).
+```{r}
+vMyIS <- Vectorize(MyIS, "mu")
+
+MyRep <- function(n, t, r, S0, K, sigma, nrep){
+  mu <- c(r, log(K / S0))
+  MCIS <- replicate(nrep, vMyIS(n, mu, t, r, S0, K, sigma))
+  mean <- apply(MCIS, 1, mean)
+  sd <- apply(MCIS, 1, sd)
+  return(data.frame(mean, sd, row.names = c("MC", "IS")))
+}
+
+set.seed(6218)
+t <- 0.25
+S0 <- 10
+K <- 15
+sigma <- 0.2
+r <- 0.05
+n <- 10000
+nrep <- 1000
+
+result4b <- MyRep(n, t, r, S0, K, sigma, nrep)
+knitr::kable(result4b, booktabs = TRUE, 
+             caption = '(ref:result4b)')
+```
+
+From the table above, we can see that the mean of the approximated value from crude Monte Carlo and importance sampling are quite close, but the standard error from importance sampling is smaller.
+
+## (c)
+
+(ref:result4c1) Mean and standard error of the approximated value from crude Monte Carlo (MC) and importance sampling (IS) with $K = 12.5$.
+
+(ref:result4b2) Mean and standard error of the approximated value from crude Monte Carlo (MC) and importance sampling (IS) with $K = 15$.
+
+(ref:result4c2) Mean and standard error of the approximated value from crude Monte Carlo (MC) and importance sampling (IS) with $K = 17.5$.
+
+
+```{r}
+result4c1 <- MyRep(n, t, r, S0, 12.5, sigma, nrep)
+result4c2 <- MyRep(n, t, r, S0, 17.5, sigma, nrep)
+
+knitr::kable(result4c1, booktabs = TRUE, digits = 8,
+             caption = '(ref:result4c1)')
+
+knitr::kable(result4b, booktabs = TRUE, digits = 8,
+             caption = '(ref:result4b2)')
+
+knitr::kable(result4c2, booktabs = TRUE, digits = 8, 
+             caption = '(ref:result4c2)')
+
+```
+
+From the above three tables, we can see that as $K$ increases, the mean and standard error of the approximated value become smaller for both methods. In all three cases, the standard error from importance sampling is smaller.
+
